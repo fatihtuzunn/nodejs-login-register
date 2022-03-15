@@ -8,9 +8,10 @@ const passport = require("passport");
 const session = require("express-session");
 const LocalStrategy = require("passport-local").Strategy;
 const bcrypt= require("bcrypt")
+const flash = require("express-flash");
 
 mongoose.connect("mongodb://localhost/auth-demo");
-
+/* 
 function initializePassport(passport, getUserByEmail, getUserById) {
   const authenticateUser = async (email, password, done) => {
     const user = getUserByEmail(email);
@@ -47,8 +48,8 @@ initializePassport(
     const user = User.findOne({ id: id });
     user.id === id;
   }
-);
-
+); */
+app.use(flash());
 app.set("view engine", "ejs");
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -60,14 +61,26 @@ app.use(
   })
 );
 
+app.use(passport.initialize());
+
 app.use(passport.session());
-/* // use static authenticate method of model in LocalStrategy
-passport.use(new LocalStrategy(User.authenticate()));
+// use static authenticate method of model in LocalStrategy
+passport.use(new LocalStrategy({ usernameField: "email" },
+  function(email, password, done) {
+    User.findOne({ email: email }, 
+      async function (err, user) {
+      if (err) { return done(err); }
+      if (!user) { return done(null, false); }
+      if (await bcrypt.compare(password, user.password)) { return done(null, false); }
+      return done(null, user);
+    });
+  }
+));
 // use static serialize and deserialize of model for passport session support
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
-app.use(passport.initialize());
- */
+
+
 
 //=======================
 //      R O U T E S
@@ -112,6 +125,7 @@ app.post(
   passport.authenticate("local", {
     successRedirect: "/",
     failureRedirect: "/login",
+    failureFlash: true
   })
 );
 
