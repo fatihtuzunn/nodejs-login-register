@@ -7,47 +7,51 @@ const User = require("./models/User");
 const passport = require("passport");
 const session = require("express-session");
 const LocalStrategy = require("passport-local").Strategy;
+const bcrypt= require("bcrypt")
 
 mongoose.connect("mongodb://localhost/auth-demo");
 
 function initializePassport(passport, getUserByEmail, getUserById) {
   const authenticateUser = async (email, password, done) => {
-    const user = getUserByEmail(email)
+    const user = getUserByEmail(email);
     if (user == null) {
-      return done(null, false, { message: 'No user with that email' })
+      return done(null, false, { message: "No user with that email" });
     }
 
     try {
       if (await bcrypt.compare(password, user.password)) {
-        return done(null, user)
+        return done(null, user);
       } else {
-        return done(null, false, { message: 'Password incorrect' })
+        return done(null, false, { message: "Password incorrect" });
       }
     } catch (e) {
-      return done(e)
+      return done(e);
     }
-  }
+  };
 
-  passport.use(new LocalStrategy({ usernameField: 'email' }, authenticateUser))
-  passport.serializeUser((user, done) => done(null, user.id))
+  passport.use(new LocalStrategy({ usernameField: "email" }, authenticateUser));
+  passport.serializeUser((user, done) => done(null, user.id));
   passport.deserializeUser((id, done) => {
-    return done(null, getUserById(id))
-  })
+    return done(null, getUserById(id));
+  });
 }
 
 initializePassport(
   passport,
-  email => User.findOne({email:email}),
-  id => users.find(user => user.id === id)
-)
 
-
-
-
-
+  (email) => {
+    const user = User.findOne({ email: email });
+    user.email === email;
+  },
+  (id) => {
+    const user = User.findOne({ id: id });
+    user.id === id;
+  }
+);
 
 app.set("view engine", "ejs");
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(
   session({
     secret: "knights who say ni",
@@ -68,83 +72,63 @@ app.use(passport.initialize());
 //=======================
 //      R O U T E S
 //=======================
-app.get("/", (req, res) => {
+app.get("/", checkAuthenticated, (req, res) => {
   res.render("home");
 });
-app.get("/userprofile", (req, res) => {
+app.get("/userprofile", checkNotAuthenticated, (req, res) => {
   res.render("userprofile");
 });
 //Auth Routes
-app.get("/login", (req, res) => {
+app.get("/login", checkNotAuthenticated, (req, res) => {
   res.render("login");
 });
-app.get("/register", (req, res) => {
+app.get("/register", checkNotAuthenticated, (req, res) => {
   res.render("register");
 });
 
 // POST Routes
 
-app.post("/register", function (req, res) {
-  async (req, res) => {
-    try {
-      const hashedPassword = await bcrypt.hash(req.body.password, 10)
-      const Users = new User({ 
-        email: req.body.email, 
-        name: req.body.name,
-        password: hashedPassword
-      })
-      res.redirect('/login')
-    } catch {
-      res.redirect('/register')
-    }
-  }
-  
-
-});
-
-app.post("/login", function (req, res) {
-  if (!req.body.username) {
-    res.json({ success: false, message: "Username was not given" });
-  } else {
-    if (!req.body.password) {
-      res.json({ success: false, message: "Password was not given" });
-    } else {
-      passport.authenticate("local", function (err, user, info) {
-        if (err) {
-          res.json({ success: false, message: err });
-        } else {
-          if (!user) {
-            res.json({
-              success: false,
-              message: "username or password incorrect",
-            });
-          } else {
-            req.login(user, function (err) {
-              if (err) {
-                res.json({ success: false, message: err });
-              } else {
-                const token = jwt.sign(
-                  { userId: user._id, username: user.username },
-                  secretkey,
-                  { expiresIn: "24h" }
-                );
-                res.json({
-                  success: true,
-                  message: "Authentication successful",
-                  token: token,
-                });
-              }
-            });
-          }
-        }
-      })(req, res);
-    }
+app.post("/register",  async (req, res) => {
+  try {
+    const hashedPassword = await bcrypt.hash(req.body.password, 10); 
+     const user = await User.create({
+      name: req.body.name,
+      email: req.body.email,
+      password: hashedPassword,
+    });
+    res.redirect("/login");
+  } catch(error) {
+    console.log(error);
+    res.redirect("/register");
   }
 });
 
 
 
 
+app.post(
+  "/login",
+  checkNotAuthenticated,
+  passport.authenticate("local", {
+    successRedirect: "/",
+    failureRedirect: "/login",
+  })
+);
+
+function checkAuthenticated(req, res, next) {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+
+  res.redirect("/login");
+}
+
+function checkNotAuthenticated(req, res, next) {
+  if (req.isAuthenticated()) {
+    return res.redirect("/");
+  }
+  next();
+}
 
 const port = 3000;
 app.listen(port, () => console.log(`Example app listening on port ${port}!`));
